@@ -1,0 +1,51 @@
+# ============================================================
+#  STOCKSLING — Dependencias Python de Producción
+# ============================================================
+
+# --- Servidor y Arquitectura Asíncrona ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+aiofiles>=23.2.1
+websockets>=12.0
+python-multipart>=0.0.9
+
+# --- Autenticación y Seguridad ---
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# --- Base de Datos ---
+sqlalchemy>=2.0.30
+asyncpg>=0.29.0
+alembic>=1.13.0
+
+# --- Criptografía AES-256-GCM ---
+cryptography>=42.0.0
+
+# --- Cola de Tareas ---
+celery>=5.4.0
+redis>=5.0.4
+
+# --- Inteligencia Artificial ---
+anthropic>=0.28.0
+
+# --- Almacenamiento Cloud (Presigned URLs) ---
+boto3>=1.34.0
+
+# --- Procesamiento de Imágenes Profesionales y RAW ---
+rawpy>=0.22.0
+imageio>=2.34.0
+pyexiftool>=0.5.6
+Pillow>=10.3.0
+
+# --- Procesamiento de Vídeo (via subprocess FFmpeg/FFprobe) ---
+# FFmpeg se instala a nivel de sistema en el Dockerfile, no como paquete Python.
+
+# --- Transferencia FTP Asíncrona ---
+aioftp>=0.22.3
+
+# --- Entorno ---
+python-dotenv>=1.0.1
+httpx>=0.27.0
+stripe>=7.0.0

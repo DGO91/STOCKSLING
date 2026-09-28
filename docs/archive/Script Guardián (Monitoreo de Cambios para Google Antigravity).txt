@@ -1,0 +1,62 @@
+import asyncio
+import os
+import sys
+# Reutilizamos la función de subida asíncrona que programamos en el paso anterior
+from pieza_ftp_uploader import upload_photo_to_agency, FTPUploadPayload 
+
+# Ruta de una imagen fantasma de 1x1 píxel guardada en el servidor para las pruebas
+CANARY_IMAGE_PATH = "/app/assets/canary_pixel.jpg"
+
+async def check_agency_status(agency_name: str) -> bool:
+    """
+    Prueba si el servidor FTP de la agencia sigue aceptando el método de subida actual.
+    """
+    # Cargamos credenciales de cuentas de prueba tuyas (no de tus clientes)
+    ftp_user = os.environ.get(f"TEST_{agency_name.upper()}_USER")
+    ftp_pass = os.environ.get(f"TEST_{agency_name.upper()}_PASS")
+
+    if not ftp_user or not ftp_pass:
+        print(f"Configuración incompleta: Faltan variables de prueba para {agency_name}")
+        return False
+
+    payload = FTPUploadPayload(
+        local_file_path=CANARY_IMAGE_PATH,
+        agency_name=agency_name,
+        ftp_user=ftp_user,
+        ftp_password_decrypted=ftp_pass
+    )
+
+    # Intentamos la subida asíncrona
+    success = await upload_photo_to_agency(payload)
+    return success
+
+async def run_global_canary_check():
+    """
+    Orquesta la verificación de todas las agencias de stock en paralelo.
+    """
+    agencies = ["adobe", "shutterstock"]
+    
+    # Ejecutamos las pruebas de todas las agencias concurrentemente
+    tasks = [check_agency_status(agency) for agency in agencies]
+    results = await asyncio.gather(*tasks)
+
+    # Emparejamos los resultados con los nombres de las agencias
+    status_report = dict(zip(agencies, results))
+    
+    for agency, is_healthy in status_report.items():
+        if not is_healthy:
+            print(f"🚨 ALERTA CRÍTICA: Se detectó un fallo en la subida a {agency.upper()}.")
+            # Salida con código de error 1: Esto le indica a Google Antigravity
+            # que la prueba falló y debe disparar el agente de auto-reparación (Self-Healing).
+            sys.exit(1)
+            
+    print("✅ Todas las agencias operan con normalidad. Sistema estable.")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    # Evitamos que falle la ejecución si no están las variables de entorno configuradas aún
+    if os.path.exists(CANARY_IMAGE_PATH):
+        asyncio.run(run_global_canary_check())
+    else:
+        print("Entorno local detectado: Saltando test de producción por falta de archivos canary.")
+

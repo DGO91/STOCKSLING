@@ -1,0 +1,55 @@
+import uuid
+from datetime import datetime
+from pydantic import BaseModel
+
+class IncidentReport(BaseModel):
+    incident_code: str
+    user_id: str
+    file_id: str
+    technical_error: str
+    user_diagnostic: str       # Mensaje amigable para el fotógrafo
+    antigravity_action: str     # Instrucción interna para el agente de auto-reparación
+
+def generate_incident_diagnostic(user_id: str, file_id: str, raw_error: str) -> IncidentReport:
+    """
+    Captura el error crudo del sistema, genera un código único de rastreo
+    y procesa un diagnóstico automatizado con la solución inmediata.
+    """
+    # 1. Generar el código único estructurado
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    # Usamos los primeros 8 caracteres de los UUIDs para mantener el código legible
+    incident_code = f"ERR-{user_id[:8].upper()}-{file_id[:8].upper()}-{timestamp}"
+    
+    # 2. Diccionario de mapeo de errores comunes de agencias de stock
+    error_lower = raw_error.lower()
+    
+    # Valores por defecto
+    user_msg = "Ha ocurrido un error inesperado en los servidores de la agencia. Nuestro equipo técnico ya está revisándolo."
+    ag_action = "TRIGGER_SELF_HEALING_AGENT"
+
+    # Diagnósticos específicos automatizados
+    if "530" in error_lower or "authentication failed" in error_lower:
+        user_msg = "Error de autenticación. Tus credenciales FTP de Adobe Stock o Shutterstock son incorrectas o han expirado. Por favor, actualízalas en tu perfil."
+        ag_action = "NOTIFY_USER_CREDENTIALS"
+        
+    elif "duration" in error_lower or "codec" in error_lower:
+        user_msg = "El archivo de vídeo no cumple con los requisitos. Asegúrate de que dure entre 5 y 60 segundos y esté en un formato admitido (MP4/MOV ProRes)."
+        ag_action = "REJECT_FILE_FORMAT"
+        
+    elif "421" in error_lower or "too many connections" in error_lower:
+        user_msg = "El servidor de la agencia está saturado en este momento. StockSling reintentará la subida de tu archivo automáticamente en 10 minutos."
+        ag_action = "RETRY_QUEUE_DELAYED"
+        
+    elif "quota" in error_lower or "disk full" in error_lower:
+        user_msg = "Tu cuenta de colaborador en la agencia ha alcanzado su límite de almacenamiento o está temporalmente bloqueada por revisión de contenido."
+        ag_action = "PAUSE_AGENCY_UPLOADS"
+
+    # 3. Construir el reporte final de telemetría
+    return IncidentReport(
+        incident_code=incident_code,
+        user_id=user_id,
+        file_id=file_id,
+        technical_error=raw_error,
+        user_diagnostic=user_msg,
+        antigravity_action=ag_action
+    )

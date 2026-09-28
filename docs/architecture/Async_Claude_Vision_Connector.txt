@@ -1,0 +1,79 @@
+import base64
+import json
+from anthropic import AsyncAnthropic
+from pydantic import BaseModel
+from typing import List
+
+# Initialize the Anthropic client (automatically looks for ANTHROPIC_API_KEY in environment variables)
+anthropic_client = AsyncAnthropic()
+
+class ClaudeMetadataResponse(BaseModel):
+    title: str
+    description: str
+    keywords: List[str]
+    requires_model_release: bool
+
+async def analyze_image_with_claude(image_path: str) -> ClaudeMetadataResponse:
+    """
+    Sends an image thumbnail to the Claude 3.5 Sonnet / Claude Sonnet 4.5 API
+    and extracts stock-optimized metadata formatted strictly as JSON.
+    """
+    # 1. Read and encode the local image in Base64
+    with open(image_path, "rb") as image_file:
+        image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+
+    # 2. Optimized Master System Prompt for structured JSON responses
+    system_prompt = (
+        "You are an expert in visual content indexing and SEO for stock platforms. "
+        "You must respond ONLY with a valid JSON object, with no introductory text, "
+        "no markdown code blocks (like ```json), and no explanations.\n"
+        "Required structure:\n"
+        "{\n"
+        "  \"title\": \"String of 5 to 10 words in English. Commercial style.\",\n"
+        "  \"description\": \"String of a detailed single sentence in English.\",\n"
+        "  \"keywords\": [List of 40 to 50 relevant English keywords as strings.],\n"
+        "  \"requires_model_release\": boolean\n"
+        "}"
+    )
+
+    try:
+        # 3. Asynchronous call to the Claude API
+        response = await anthropic_client.messages.create(
+            model="claude-sonnet-4-5", # Production stable / updated model version
+            max_tokens=1000,
+            temperature=0.2, # Low temperature for logical, predictable responses
+            system=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": "Analyze this stock photo and generate the JSON metadata."
+                        }
+                    ]
+                }
+            ]
+        )
+
+        # 4. Parse the plain text response directly to JSON
+        raw_text = response.content[0].text.strip()
+        data_json = json.loads(raw_text)
+        
+        # Validate data using Pydantic to ensure it fits the database schema
+        return ClaudeMetadataResponse(**data_json)
+
+    except json.JSONDecodeError:
+        print("ERROR: Claude did not return a valid JSON. Retrying or sending to logs.")
+        raise
+    except Exception as e:
+        print(f"Error calling Claude API: {str(e)}")
+        raise

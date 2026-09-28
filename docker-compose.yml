@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  # ── API FastAPI ──────────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: stocksling_api
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend  # Hot-reload en desarrollo
+      - ./local_storage:/app/local_storage
+    networks:
+      - stocksling_net
+
+  # ── Celery Worker (procesa colas de fotos/vídeos) ───────────────────
+  worker:
+    build: .
+    container_name: stocksling_worker
+    restart: always
+    command: celery -A backend.app.workers.queue_worker worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+    volumes:
+      - ./backend:/app/backend
+      - ./local_storage:/app/local_storage
+    networks:
+      - stocksling_net
+
+  # ── Celery Beat (Canary cron scheduler) ─────────────────────────────
+  scheduler:
+    build: .
+    container_name: stocksling_scheduler
+    restart: always
+    command: celery -A backend.app.workers.queue_worker beat --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app/backend
+    networks:
+      - stocksling_net
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: stocksling_db
+    restart: always
+    environment:
+      POSTGRES_DB: stocksling
+      POSTGRES_USER: stocksling
+      POSTGRES_PASSWORD: stocksling_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stocksling"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stocksling_net
+
+  # ── Redis ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: stocksling_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stocksling_net
+
+volumes:
+  postgres_data:
+
+networks:
+  stocksling_net:
+    driver: bridge

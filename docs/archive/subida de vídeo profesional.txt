@@ -1,0 +1,97 @@
+import asyncio
+import os
+import subprocess
+import aioftp
+import aiofiles
+from pydantic import BaseModel, Field
+
+class VideoUploadPayload(BaseModel):
+    local_video_path: str
+    agency_name: str          # "adobe" o "shutterstock"
+    ftp_user: str
+    ftp_password_decrypted: str
+
+class VideoValidationResult(BaseModel):
+    is_valid: bool
+    duration: float
+    error_message: str = None
+
+# Servidores FTP estándar para vídeo (algunas agencias usan los mismos que para foto)
+VIDEO_FTP_SERVERS = {
+    "adobe": "://adobestock.com",
+    "shutterstock": "://shutterstock.com"
+}
+
+def validate_and_extract_frame(video_path: str, output_frame_path: str) -> VideoValidationResult:
+    """
+    Usa FFmpeg de forma nativa en el contenedor Docker para:
+    1. Validar la duración estricta de las agencias (5 a 60 segundos).
+    2. Extraer un fotograma limpio del segundo 00:02 para enviárselo a Claude.
+    """
+    try:
+        # 1. Obtener la duración del vídeo usando ffprobe
+        duration_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nocentral=1", video_path
+        ]
+        duration_result = subprocess.run(duration_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        duration = float(duration_result.stdout.strip())
+
+        # Validación de reglas de stock
+        if duration < 5.0 or duration > 60.0:
+            return VideoValidationResult(
+                is_valid=False, 
+                duration=duration, 
+                error_message=f"Duración inválida: {duration:.2f}s. Las agencias solo aceptan entre 5 y 60 segundos."
+            )
+
+        # 2. Extraer fotograma clave en el segundo 2 sin alterar el vídeo original
+        # -ss 2 (segundo 2), -vframes 1 (solo un cuadro), -f image2 (formato imagen)
+        ffmpeg_cmd = [
+            "ffmpeg", "-y", "-ss", "00:00:02", "-i", video_path,
+            "-vframes", "1", "-f", "image2", output_frame_path
+        ]
+        subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        
+        print(f"✅ Fotograma de vídeo extraído con éxito en: {output_frame_path}")
+        return VideoValidationResult(is_valid=True, duration=duration)
+
+    except Exception as e:
+        return VideoValidationResult(is_valid=False, duration=0.0, error_message=str(e))
+
+
+async def upload_video_to_agency(payload: VideoUploadPayload) -> bool:
+    """
+    Sube archivos de vídeo masivos por FTP de manera asíncrona.
+    Configura buffers más grandes para soportar archivos de más de 1GB (ProRes/4K).
+    """
+    server = VIDEO_FTP_SERVERS.get(payload.agency_name.lower())
+    if not server:
+        print(f"Error: Servidor de vídeo no configurado para {payload.agency_name}")
+        return False
+
+    file_name = os.path.basename(payload.local_video_path)
+    
+    try:
+        print(f"Iniciando subida masiva de vídeo: {file_name} hacia {payload.agency_name}...")
+        
+        # Conexión asíncrona
+        async with aioftp.Client.context(server, user=payload.ftp_user, password=payload.ftp_password_decrypted) as client:
+            
+            # Abrimos el archivo de vídeo pesado
+            async with aiofiles.open(payload.local_video_path, mode='rb') as f:
+                
+                async with client.upload_stream(file_name) as stream:
+                    while True:
+                        # Buffer optimizado para vídeo a 256KB por fragmento (reduce el uso de CPU y acelera la red)
+                        chunk = await f.read(262144) 
+                        if not chunk:
+                            break
+                        await stream.write(chunk)
+                        
+        print(f"🚀 ¡Vídeo {file_name} subido con éxito y sin pérdida a {payload.agency_name}!")
+        return True
+
+    except Exception as e:
+        print(f"🚨 FALLO CRÍTICO en la subida del vídeo {file_name}: {str(e)}")
+        return False

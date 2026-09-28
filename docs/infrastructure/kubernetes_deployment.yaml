@@ -1,0 +1,197 @@
+# ==============================================================================
+#  STOCKSLING — Kubernetes Production Manifests & Autoscaling
+#  Configuración para despliegue de alta disponibilidad en AWS EKS.
+# ==============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stocksling-prod
+
+---
+# ── 1. POOLER DE BASE DE DATOS (PgBouncer) ────────────────────────────────────
+# Protege a PostgreSQL limitando las conexiones físicas y reciclando las de la API.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: stocksling-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+      - name: pgbouncer
+        image: edobry/pgbouncer:latest
+        ports:
+        - containerPort: 6432
+        env:
+        - name: DB_HOST
+          value: "stocksling-production-postgres-cluster.cluster-xyz.eu-west-1.rds.amazonaws.com"
+        - name: DB_USER
+          value: "stocksling_master"
+        - name: DB_PASSWORD
+          value: "SecureRandomPassWord2026_Enterprise"
+        - name: DB_NAME
+          value: "stocksling"
+        - name: POOL_MODE
+          value: "transaction" # Modo transacción para máximo ahorro
+        - name: MAX_CLIENT_CONN
+          value: "10000"       # Soporta hasta 10,000 peticiones en cola
+        - name: DEFAULT_POOL_SIZE
+          value: "20"          # Solo 20 conexiones reales por réplica a la DB
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer-service
+  namespace: stocksling-prod
+spec:
+  ports:
+  - port: 5432
+    targetPort: 6432
+  selector:
+    app: pgbouncer
+
+---
+# ── 2. SERVIDOR WEB (FastAPI Web API) ─────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocksling-api
+  namespace: stocksling-prod
+spec:
+  replicas: 5 # Arranca con 5 réplicas base para absorber tráfico inicial
+  selector:
+    matchLabels:
+      app: stocksling-api
+  template:
+    metadata:
+      labels:
+        app: stocksling-api
+    spec:
+      containers:
+      - name: api
+        image: <ACCOUNT_ID>.dkr.ecr.eu-west-1.amazonaws.com/stocksling-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://stocksling_master:SecureRandomPassWord2026_Enterprise@pgbouncer-service.stocksling-prod.svc.cluster.local:5432/stocksling"
+        - name: REDIS_URL
+          value: "redis://stocksling-redis.cache.amazonaws.com:6379/0"
+        - name: ENVIRONMENT
+          value: "production"
+
+---
+# balanceador de carga externo expuesto a internet
+apiVersion: v1
+kind: Service
+metadata:
+  name: stocksling-api-service
+  namespace: stocksling-prod
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb" # Network Load Balancer para máxima velocidad
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: stocksling-api
+
+---
+# Autoescalado de Pods de la API web por consumo de CPU
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: stocksling-api-hpa
+  namespace: stocksling-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: stocksling-api
+  minReplicas: 5
+  maxReplicas: 100 # Escala dinámicamente hasta 100 servidores para soportar 50k usuarios
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75 # Autoescala si el procesador supera el 75%
+
+---
+# ── 3. PROCESADORES ASÍNCRONOS (Celery Workers con KEDA) ──────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stocksling-worker
+  namespace: stocksling-prod
+spec:
+  replicas: 2 # 2 Workers mínimos en horas muertas
+  selector:
+    matchLabels:
+      app: stocksling-worker
+  template:
+    metadata:
+      labels:
+        app: stocksling-worker
+    spec:
+      containers:
+      - name: worker
+        image: <ACCOUNT_ID>.dkr.ecr.eu-west-1.amazonaws.com/stocksling-worker:latest
+        command: ["celery", "-A", "backend.app.workers.queue_worker", "worker", "--loglevel=info", "--concurrency=2"]
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        env:
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://stocksling_master:SecureRandomPassWord2026_Enterprise@pgbouncer-service.stocksling-prod.svc.cluster.local:5432/stocksling"
+        - name: REDIS_URL
+          value: "redis://stocksling-redis.cache.amazonaws.com:6379/0"
+        - name: ENVIRONMENT
+          value: "production"
+
+---
+# autoescalador elástico basado en el tamaño real de la cola de Redis (KEDA)
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: stocksling-worker-scaler
+  namespace: stocksling-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: stocksling-worker
+  minReplicas: 2
+  maxReplicas: 200 # Escala dinámicamente hasta 200 pods workers durante avalanchas de subidas
+  cooldownPeriod: 300
+  pollingInterval: 15
+  triggers:
+  - type: redis
+    metadata:
+      addressFromEnv: REDIS_URL
+      listName: "celery" # Cola por defecto de Celery
+      listLength: "5"    # Crea 1 pod worker extra por cada 5 tareas en espera en Redis

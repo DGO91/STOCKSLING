@@ -1,0 +1,158 @@
+# BLUEPRINT OFICIAL DE DESARROLLO: STOCKSLING (SAAS MULTIMEDIA)
+
+Este documento contiene la arquitectura de software, el mapa de directorios, la lógica de negocio y las directrices de ingeniería para construir **StockSling**, un SaaS automatizado y autosuficiente para la indexación y subida masiva de material de stock en 2026.
+
+---
+
+## 1. ESPECIFICACIONES Y OBJETIVOS DEL SISTEMA
+*   **Nombre Comercial:** StockSling
+*   **Propósito:** Automatizar la indexación SEO multimedia (Fotos RAW/JPEG y Vídeos 4K/ProRes/MP4/MOV) mediante la IA de Claude (Anthropic), gestionar autorizaciones de modelos de forma inteligente y distribuir los archivos en paralelo sin pérdida de calidad mediante conexiones asíncronas FTP a Adobe Stock y Shutterstock.
+*   **Filosofía:** Sistema 100% autoservicio, libre de soporte humano y auto-reparable (Self-Healing) ante cambios de las agencias de stock.
+
+---
+
+## 2. MAPA COMPLETO DE LA CARPETA RAÍZ DENTRO DEL CONTENEDOR
+
+stocksling-core/                  # Carpeta raíz del proyecto StockSling
+│
+├── .agents/                     # Configuración y directrices para Google Antigravity
+│   └── skills/
+│       └── stocksling_rules.md   # Instrucciones sagradas de IA (Cero compresión, auto-reparación)
+│
+├── .github/
+│   └── workflows/
+│       └── deploy.yml           # CI/CD para despliegue y auto-reparación automatizada
+│
+├── assets/                      # Archivos estáticos de control
+│   └── canary_pixel.jpg         # Imagen/Frame de prueba para el monitoreo continuo "Canary"
+│
+├── backend/                     # Microservicio de API, procesamiento e Inteligencia Artificial
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py              # Punto de entrada asíncrono de FastAPI
+│   │   ├── config.py            # Variables de entorno y secretos cifrados (AWS/GCP)
+│   │   ├── database.py          # Conexión asíncrona a PostgreSQL con SQLAlchemy
+│   │   ├── models.py            # Esquema SQL extendido (Soporte para Códigos de Incidencia Únicos)
+│   │   │
+│   │   ├── crypto/
+│   │   │   └── vault.py         # Cifrado militar AES-256-GCM para credenciales de agencias
+│   │   │
+│   │   ├── services/
+│   │   │   ├── claude_vision.py # Cliente API de Claude 3.5 Sonnet (Indexador JSON estricto)
+│   │   │   ├── raw_processor.py # Procesamiento de fotos RAW (.CR3, .NEF, .ARW) con rawpy
+│   │   │   ├── video_processor.py # Extractor de fotogramas y validador de códecs (FFmpeg)
+│   │   │   ├── ftp_uploader.py  # Conector aioftp de alta velocidad y buffers optimizados
+│   │   │   └── ai_support_agent.py # Agente de soporte autónomo (Guía al usuario y activa parches)
+│   │   │
+│   │   └── workers/
+│   │       ├── cron_guardian.py # Script "Watcher" que dispara las alertas del Canary Test
+│   │       └── queue_worker.py  # Procesador de colas asíncronas (Redis/Celery)
+│   │
+│   ├── Dockerfile               # Multi-stage: Instala libraw, exiftool, imagemagick y FFMPEG
+│   └── requirements.txt         # Dependencias de Python (FastAPI, rawpy, anthropic, aioftp...)
+│
+├── frontend/                    # Interfaz de usuario (SaaS en la nube en modo oscuro)
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Dashboard.jsx    # Zona Drag & Drop (Soporta vídeos masivos mediante URLs firmadas)
+│   │   │   ├── MetadataEditor.jsx # Panel partido con Tailwind (Muestra errores amigables y chat IA)
+│   │   │   └── Referrals.jsx    # Módulo de gamificación y sistema de referidos por créditos
+│   │   └── App.jsx
+│   ├── index.html               # Estructura HTML de tu Landing Page de alta conversión
+│   ├── tailwind.config.js       # Paleta de colores corporativa (Slate 950, Cian eléctrico, Esmeralda)
+│   └── package.json
+│
+└── docker-compose.yml           # Orquestación de contenedores locales (API + PostgreSQL + Redis)
+
+---
+
+## 3. REGLAS SAGRADAS DE INGENIERÍA PARA LOS AGENTES
+1.  **Conservación Binaria No Destructiva:** Prohibido re-comprimir píxeles en el servidor. Las fotos inyectan metadatos IPTC/XMP a nivel binario con ExifTool/ImageMagick. Los vídeos se transmiten idénticos de manera nativa (`-c copy`).
+2.  **Flujo Desacoplado por Miniaturas:** La IA de Claude solo procesa copias ligeras de 1024px extraídas localmente en el navegador (fotos) o mediante FFmpeg en el segundo `00:02` (vídeos).
+3.  **Subidas Directas por URLs Firmadas:** El frontend usa URLs firmadas de Amazon S3 o Google Cloud Storage para que los archivos ProRes o RAW gigantes viajen directamente del navegador a la nube sin pasar por la RAM del servidor web.
+4.  **Cero Bloqueos:** Todo el backend opera asíncronamente (`FastAPI`, `SQLAlchemy`, `aioftp`, `aiofiles`). Las tareas pesadas se delegan a colas con Redis/Celery.
+
+---
+
+## 4. PIEZAS CLAVE DEL BACKEND DE PRODUCCIÓN
+
+### MÓDULO 1: Prompt de Sistema para la API de Claude (claude_vision.py)
+```text
+Eres un experto en indexación de contenido visual y SEO para plataformas de stock (Adobe Stock, Shutterstock). Tu única tarea es analizar la imagen proporcionada y generar metadatos comerciales de altísima calidad.
+Debes responder ÚNICAMENTE con un objeto JSON válido, sin textos introductorios, sin bloques de código de markdown y sin explicaciones.
+Estructura requerida:
+{
+  "title": "String de 5 a 10 palabras en inglés. Descriptivo y comercial.",
+  "description": "String de una frase detallada en inglés (máx 200 caracteres) enfocada en uso publicitario.",
+  "keywords": [Lista de exactamente 40 a 50 strings en inglés ordenadas por relevancia.],
+  "requires_model_release": boolean
+}
+```
+
+### MÓDULO 2: Cifrado Militar AES-256-GCM para Credenciales FTP (vault.py)
+```python
+import os
+from base64 import b64encode, b64decode
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+class CredentialEncryptor:
+    def __init__(self):
+        self.key = b64decode(os.environ.get("MASTER_ENCRYPTION_KEY"))
+        self.aesgcm = AESGCM(self.key)
+
+    def encrypt_data(self, plain_text: str) -> str:
+        nonce = os.urandom(12)
+        encrypted_bytes = self.aesgcm.encrypt(nonce, plain_text.encode('utf-8'), None)
+        return b64encode(nonce + encrypted_bytes).decode('utf-8')
+
+    def decrypt_data(self, encrypted_base64: str) -> str:
+        payload = b64decode(encrypted_base64.encode('utf-8'))
+        return self.aesgcm.decrypt(payload[:12], payload[12:], None).decode('utf-8')
+```
+
+### MÓDULO 3: Telemetría, Diagnóstico y Soporte 100% Autónomo (ai_support_agent.py)
+```python
+from datetime import datetime
+from pydantic import BaseModel
+
+class IncidentReport(BaseModel):
+    incident_code: str
+    user_id: str
+    file_id: str
+    technical_error: str
+    user_diagnostic: str
+    antigravity_action: str
+
+def generate_incident_diagnostic(user_id: str, file_id: str, raw_error: str) -> IncidentReport:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
+    incident_code = f"ERR-{user_id[:8].upper()}-{file_id[:8].upper()}-{timestamp}"
+    error_lower = raw_error.lower()
+    
+    user_msg = "Error inesperado en los servidores de la agencia. Procesando solución automática."
+    ag_action = "TRIGGER_SELF_HEALING_AGENT"
+
+    if "530" in error_lower or "authentication failed" in error_lower:
+        user_msg = "Tus credenciales FTP de la agencia son incorrectas en tu perfil."
+        ag_action = "NOTIFY_USER_CREDENTIALS"
+    elif "duration" in error_lower:
+        user_msg = "El vídeo no cumple con la duración permitida de 5 a 60 segundos."
+        ag_action = "REJECT_FILE_FORMAT"
+
+    return IncidentReport(
+        incident_code=incident_code, user_id=user_id, file_id=file_id,
+        technical_error=raw_error, user_diagnostic=user_msg, antigravity_action=ag_action
+    )
+```
+
+---
+
+## 5. REQUISITOS ECONÓMICOS Y DE GAMIFICACIÓN
+*   **Equivalencia de Consumo:** 1 Foto procesada = 1 Crédito // 1 Vídeo procesado = 5 Créditos (por costes variables de red y CPU).
+*   **Planes Mensuales:** Starter (Free/25 créditos) | Casual ($14.99/150 créditos) | Pro ($49.99/600 créditos + FFmpeg) | Agencia ($129.99/2,000 créditos + Red ilimitada).
+*   **Estrategia de Referidos:** Bucle Dual. Invitar a un amigo otorga 50 créditos gratis al remitente y expande el Free Tier del invitado a 50 créditos iniciales. Condición de liberación en DB: El invitado debe completar con éxito su primera subida FTP real.
+
+---
+
+## 6. INSTRUCCIONES FINALES PARA GOOGLE ANTIGRAVITY
+Genera el código de producción completo basándote en las dependencias y la estructura multi-stage del Dockerfile provisto en este mapa. Asegúrate de estructurar los WebSockets de `main.py` para reflejar el estado en tiempo real de los subprocesos de `ftp_uploader.py` y conectar los fallos del sistema directamente con tu protocolo de auto-actualización continuo de madrugada.

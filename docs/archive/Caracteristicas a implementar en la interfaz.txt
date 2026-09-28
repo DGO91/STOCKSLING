@@ -1,0 +1,8 @@
+### Características clave implementadas en esta interfaz:
+1.  **Diseño Inmersivo (Dark Mode):** Los bordes oscuros (`bg-slate-950`) y textos contrastados reducen la fatiga visual del fotógrafo y hacen que las previsualizaciones de las fotos cobren protagonismo.
+2.  **Paneles Divididos con Desplazamiento Independiente:** El lado izquierdo (galería de fotos) y el lado derecho (editor) tienen barras de scroll aisladas (`overflow-y-auto`). Esto permite que el usuario navegue por una lista de 500 fotos sin perder de vista el formulario de edición de la derecha.
+3.  **Estado Visual de la IA:** La tarjeta con la animación de carga (`animate-spin`) simula el estado exacto en tiempo real de cuando el backend asíncrono está enviando datos a la API de **Claude**.
+
+Con esta estructura visual, el núcleo técnico y de diseño de tu software está completamente conceptualizado. 
+
+Para proceder con las últimas fases del negocio antes del desarrollo físico, si lo deseas, podemos **estructurar la landing page pública** con la propuesta de valor atractiva para captar los primeros suscriptores en la academia Stockeros, o bien **definir el modelo de precios exacto estructurado en base de datos** para Stripe. ¿Qué aspecto prefieres coordinar a continuación?

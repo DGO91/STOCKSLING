@@ -1,0 +1,57 @@
+# StockSling — Gamification & Pricing Strategy
+
+To integrate video processing as a premium feature (where 1 video consumes 5 processing credits, and 1 photo consumes 1 credit), we must design a highly balanced credit-based business model. 
+
+Below is the definitive pricing, subscription, and gamification strategy for StockSling:
+
+---
+
+## 1. Monthly Subscription Plan Structure
+Users purchase a pool of monthly credits and decide how to spend them dynamically between photos and videos.
+
+### Free Tier (Proof of Concept)
+* **Price:** $0/month
+* **Inclusions:** 25 welcome credits.
+* **Goal:** Allow photographers to test the system speed with up to 25 photos or 5 professional videos, validating the Claude vision analysis and FFmpeg pipeline before buying.
+
+### Creator Plan
+* **Price:** $14.99/month
+* **Inclusions:** 150 monthly credits.
+* **Goal:** Perfect for active photographers starting to incorporate video clips into their stock portfolios (e.g., 100 photos + 10 videos per month).
+
+### Filmmaker & Stocker Pro (Recommended)
+* **Price:** $49.99/month
+* **Inclusions:** 600 monthly credits.
+* **Goal:** Unlocks support for massive video formats (such as Apple ProRes, raw footage, 4K clips) and automatic FFmpeg conversion to native stock codecs. Allows processing up to 400 photos and 40 videos per month.
+
+### Agency / Studio Premium
+* **Price:** $129.99/month
+* **Inclusions:** 2,000 monthly credits.
+* **Goal:** Tailored for media production houses and stock content agencies. Unlocks ultra-priority Docker worker queues and high-bandwidth uploads for files larger than 1GB.
+
+---
+
+## 2. Gamification: "Multimedia Partner" Referral Program
+Since video files consume more processing resources on the server, the referral rewards are balanced to remain highly attractive yet financially sustainable for the platform.
+
+### Mechanic A: Dual Affiliate Referral Link
+* **For the Referrer (Current User):** For every colleague who signs up using their link and successfully completes their first stock upload, the referrer receives **50 bonus credits** (equivalent to 50 photos or 10 videos for free).
+* **For the Invitee (New User):** Signing up via an invite link boosts their welcome balance from 25 credits to **50 free credits**, encouraging active sign-ups in photography forums.
+
+### Mechanic B: Account Ranks & Ambassador Status
+Encourages professional content creators and stock instructors to actively promote StockSling:
+* **Rank 1: Contributor (0 - 4 active referrals)**
+  * Standard credit limits and queue speeds.
+* **Rank 2: Featured Producer (5 - 14 active referrals)**
+  * Permanent 10% discount on any monthly subscription plan.
+  * *Speed Boost:* Docker queue workers process their videos twice as fast.
+* **Rank 3: StockSling Ambassador (15+ active referrals)**
+  * Unlocks a recurring 20% affiliate commission (transferred monthly to their bank account via Stripe Connect) on any plans paid for by their referred users.
+  * VIP priority customer support integrated with our backend administration.
+
+---
+
+## 3. Database Fraud Prevention
+To protect your infrastructure margins from bot registrations and API over-consumption:
+* **Referral rule:** The 50 referrer credits are not released upon registration.
+* **Release trigger condition:** The invitee must successfully configure their FTP credentials, upload their first batch, and complete at least one successful stock agency upload (either 1 photo or 1 video). In that millisecond, the backend triggers the asynchronous credit assignment function.

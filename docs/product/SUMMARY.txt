@@ -1,0 +1,70 @@
+# StockSling — Executive Product Summary & Architecture
+
+StockSling is an automated, self-service Software-as-a-SaaS (SaaS) designed to fully replace manual metadata indexing (tagging, commercial titles, SEO descriptions) and distribution tasks for professional stock photographers and videographers.
+
+---
+
+## 1. The Core Problem
+Freelance digital asset managers typically charge between **$0.20 and $0.50 per image** to select, rename, tag, and manually upload images to microstock agencies. For a photographer uploading 1,000 photos a month, this represents $200–$500 in monthly operational costs.
+
+**StockSling replaces this manual bottleneck in seconds using advanced Vision AI and a high-performance distribution architecture, bringing costs down to a fraction of a cent per file.**
+
+---
+
+## 2. Dynamic SaaS Pricing Structure
+Our credit-based billing system is designed to accommodate both seasonal and regular contributors:
+
+* **Free Tier:** 25 welcome credits to test the AI performance and FTP pipelines.
+* **Creator ($14.99/mo):** 150 monthly credits (ideal for growing photographers).
+* **Filmmaker & Stocker Pro ($49.99/mo):** 600 monthly credits. Unlocks advanced video codecs, high-capacity file handling, and model release management.
+* **Agency Premium ($129.99/mo):** 2,000 monthly credits with high-speed dedicated Docker worker queues.
+* **Pay-As-You-Go Credits:** 
+  * 100 credits = $15 ($0.15/file)
+  * 500 credits = $50 ($0.10/file)
+  * 1,000 credits = $80 ($0.08/file)
+
+---
+
+## 3. High-Performance & Cost-Efficient Technical Architecture
+
+To ensure high concurrency (2,000+ users) and protect the system's financial margins, StockSling implements four foundational engineering practices:
+
+### A. Non-Blocking Message Queue Processing (Decoupling)
+The web server never handles heavy image processing directly.
+* **Stack:** Python Celery + Redis.
+* **Workflow:** When a user uploads a batch of 50 images, the web server registers the tasks, uploads the files to a secure cloud bucket (AWS S3), and returns an immediate response to the client. Background worker processes consume tasks sequentially from the Redis queue to handle AI analysis and FTP transfers without degrading website responsiveness.
+
+### B. Client-Side Thumbnail Optimization (90% Cost Reduction)
+Sending heavy RAW or high-resolution JPEGs (40MP+) directly to Claude's Vision API causes massive network latency and astronomical API costs.
+* **Workflow:** Our React frontend compresses files locally in the browser to generate lightweight **1024x1024px JPEGs (Thumbnails)**. Only these lightweight thumbnails are sent to the Claude Vision API. 
+* **Result:** Claude's state-of-the-art vision models tag the image with perfect precision using the thumbnail, while the original massive file remains securely saved on S3, ready for distribution.
+
+### C. Direct-to-Cloud Presigned Uploads
+To prevent bottlenecking the web server's network bandwidth during mass uploads, clients bypass the backend entirely when uploading files.
+* **Workflow:** The client requests short-lived cryptographically signed URLs (Presigned URLs) from our backend, allowing the browser to stream files directly into private AWS S3 buckets.
+
+### D. Model Release Management (Compliance)
+Microstock portals immediately reject images containing recognizable human faces or private property without signed consent documents.
+* **Visual Face Detection:** The Claude Vision API analyzes images and outputs `requires_model_release: true/false`.
+* **SaaS Release Library:** Photographers upload their signed consent PDFs to their profile once, and link them to flagged images in a single click before submitting them to FTP queues.
+
+---
+
+## 4. Self-Healing Reliability Agent
+Stock agencies frequently modify their contributor portals, FTP endpoints, or HTML tags without warning. 
+To achieve complete autonomy and minimize maintenance overhead, StockSling implements a self-healing monitoring layer:
+
+```
+[Watcher Cron (Every 6h)] ──► Triggers "Canary Test Upload" (1x1 Cyan Pixel)
+                                       │
+                                       ▼ (If upload fails with error code)
+                              [Self-Healing Agent]
+                                       │
+                                       ▼ (Sends logs + code to Claude 3.5 Sonnet)
+                              [Claude Generates Patch]
+                                       │
+                                       ▼ (Deploys & restarts staging container)
+                              [Staging Auto-Test Success] ──► Push to Production CI/CD
+```
+* **Canary Testing:** A worker schedules testing uploads periodically to dummy accounts.
+* **Automated Repair:** If an upload fails, the error logs are piped to Claude. Claude writes a replacement code patch, validates it in an isolated staging container, and deploys it automatically without human intervention.

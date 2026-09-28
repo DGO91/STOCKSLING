@@ -1,0 +1,21 @@
+[
+    {
+        "AllowedHeaders": [
+            "*"
+        ],
+        "AllowedMethods": [
+            "PUT",
+            "POST",
+            "GET",
+            "HEAD"
+        ],
+        "AllowedOrigins": [
+            "http://localhost:5173",
+            "https://tudominio.com"
+        ],
+        "ExposeHeaders": [
+            "ETag"
+        ],
+        "MaxAgeSeconds": 3000
+    }
+]

@@ -1,0 +1,197 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>StockSling architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1400px;
+    background: #090d16;
+    font-family: Inter, -apple-system, system-ui, sans-serif;
+    color: #e2e8f0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stage { width: 1400px; padding: 44px 52px 30px; }
+
+  h1 { font-size: 25px; font-weight: 800; letter-spacing: -0.02em; color: #f1f5f9; }
+  .sub { font-size: 13.5px; color: #64748b; margin-top: 6px; }
+  header { margin-bottom: 26px; }
+
+  .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .col-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; font-weight: 500; letter-spacing: 0.13em;
+    text-transform: uppercase; color: #475569; margin-bottom: 11px;
+  }
+  .col {
+    border: 1px solid #1e293b; border-radius: 14px;
+    background: rgba(15,23,42,0.5); padding: 15px; height: 486px;
+  }
+  .col.accent-c { border-color: rgba(34,211,238,0.22); }
+  .col.accent-v { border-color: rgba(168,85,247,0.22); }
+  .col.accent-g { border-color: rgba(16,185,129,0.22); }
+  .col.accent-b { border-color: rgba(59,130,246,0.22); }
+
+  .card {
+    border: 1px solid #1e293b; border-radius: 10px;
+    background: #0d1420; padding: 11px 12px; margin-bottom: 9px;
+  }
+  .card:last-child { margin-bottom: 0; }
+  .card h3 { font-size: 12.5px; font-weight: 700; color: #cbd5e1; margin-bottom: 4px; }
+  .card p { font-size: 11px; line-height: 1.45; color: #64748b; }
+  .tag {
+    display: inline-block; margin-top: 7px;
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px;
+    padding: 2px 7px; border-radius: 5px;
+    border: 1px solid #1e293b; background: #0a101a; color: #64748b;
+  }
+  .tag.c { color: #22d3ee; border-color: rgba(34,211,238,0.24); background: rgba(34,211,238,0.06); }
+  .tag.v { color: #c084fc; border-color: rgba(168,85,247,0.24); background: rgba(168,85,247,0.06); }
+  .tag.g { color: #34d399; border-color: rgba(16,185,129,0.24); background: rgba(16,185,129,0.06); }
+  .tag.b { color: #60a5fa; border-color: rgba(59,130,246,0.24); background: rgba(59,130,246,0.06); }
+  .tag.r { color: #fb7185; border-color: rgba(244,63,94,0.24); background: rgba(244,63,94,0.06); }
+
+  .note {
+    margin-top: 26px; border: 1px solid #1e293b; border-radius: 12px;
+    background: rgba(15,23,42,0.4); padding: 15px 18px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px;
+  }
+  .note div h4 { font-size: 11.5px; font-weight: 700; color: #94a3b8; margin-bottom: 4px; }
+  .note div p { font-size: 11px; line-height: 1.5; color: #64748b; }
+  .note strong { color: #22d3ee; font-weight: 600; }
+
+  footer {
+    margin-top: 22px;
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #334155;
+  }
+  .legend span { margin-right: 15px; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+</style>
+<div class="stage">
+  <header>
+    <h1>StockSling: from a RAW file to five stock agencies</h1>
+    <div class="sub">Asynchronous pipeline. The web server never touches a heavy file.</div>
+  </header>
+
+  <div class="cols">
+    <div>
+      <div class="col-head">01 · Browser</div>
+      <div class="col accent-c">
+        <div class="card">
+          <h3>Batch selection</h3>
+          <p>Photographer drops RAW, JPEG or video. Nothing has left the machine yet.</p>
+          <span class="tag c">React · Vite</span>
+        </div>
+        <div class="card">
+          <h3>Thumbnail built client side</h3>
+          <p>Each file is downscaled in the browser to 1024px before anything is sent. A 45MB RAW never reaches the vision model.</p>
+          <span class="tag c">Canvas</span>
+        </div>
+        <div class="card">
+          <h3>Direct upload to storage</h3>
+          <p>The browser asks for a short-lived signed URL and streams the original straight into private object storage, bypassing the API entirely.</p>
+          <span class="tag c">Presigned URL</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="col-head">02 · API and queue</div>
+      <div class="col accent-v">
+        <div class="card">
+          <h3>Registers, does not process</h3>
+          <p>The API writes one row per file and returns immediately. Response time is independent of batch size.</p>
+          <span class="tag v">FastAPI · async</span>
+        </div>
+        <div class="card">
+          <h3>Task queue</h3>
+          <p>Work is handed to background workers. A 200 file batch and a 2 file batch behave the same from the browser.</p>
+          <span class="tag v">Celery · Redis</span>
+        </div>
+        <div class="card">
+          <h3>Encrypted credential vault</h3>
+          <p>Each contributor's FTP passwords are encrypted per user. The database never stores anything readable.</p>
+          <span class="tag r">AES-256-GCM</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="col-head">03 · Workers</div>
+      <div class="col accent-g">
+        <div class="card">
+          <h3>Vision analysis</h3>
+          <p>The thumbnail goes to the model, which returns a commercial title, description and around 45 keywords.</p>
+          <span class="tag g">Claude Vision</span>
+        </div>
+        <div class="card">
+          <h3>Model release detection</h3>
+          <p>Recognisable faces and private property are flagged. Agencies reject those files without a signed release.</p>
+          <span class="tag g">Compliance</span>
+        </div>
+        <div class="card">
+          <h3>Lossless metadata injection</h3>
+          <p>Metadata is written into the original file without recompressing a single pixel.</p>
+          <span class="tag g">ExifTool</span>
+        </div>
+        <div class="card">
+          <h3>RAW and video handling</h3>
+          <p>RAW decoding and video probing run in the worker, never in the request cycle.</p>
+          <span class="tag g">rawpy · FFmpeg</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="col-head">04 · Distribution</div>
+      <div class="col accent-b">
+        <div class="card">
+          <h3>Human review first</h3>
+          <p>Nothing is sent until the photographer approves the generated metadata. The AI proposes, the author decides.</p>
+          <span class="tag b">Review board</span>
+        </div>
+        <div class="card">
+          <h3>Asynchronous FTP delivery</h3>
+          <p>Files are pushed to five contributor portals in parallel, each with its own credentials and host.</p>
+          <span class="tag b">aioftp</span>
+        </div>
+        <div class="card">
+          <h3>Live transfer status</h3>
+          <p>Per file, per agency progress streamed back to the browser as it happens.</p>
+          <span class="tag b">WebSocket</span>
+        </div>
+        <div class="card">
+          <h3>Canary watcher</h3>
+          <p>A scheduled job uploads a 1 pixel test file to every agency. A silent endpoint change is detected before a customer's batch fails.</p>
+          <span class="tag b">Celery beat</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <div>
+      <h4>Why the thumbnail is built in the browser</h4>
+      <p>Sending 40 megapixel originals to a vision model is slow and expensive. Analysing a <strong>1024px thumbnail</strong> returns the same keywords at a fraction of the cost, while the original stays untouched in storage.</p>
+    </div>
+    <div>
+      <h4>Why the upload bypasses the API</h4>
+      <p>A mass upload through the web server saturates its bandwidth and blocks every other user. <strong>Signed URLs</strong> let the browser write straight to storage, so the API stays responsive under load.</p>
+    </div>
+    <div>
+      <h4>Why a canary test exists</h4>
+      <p>Agencies change FTP endpoints without notice. A periodic <strong>1 pixel upload</strong> surfaces the breakage on a dummy account instead of on a paying photographer's batch.</p>
+    </div>
+  </div>
+
+  <footer>
+    <div class="legend">
+      <span><i class="dot" style="background:#22d3ee"></i>Browser</span>
+      <span><i class="dot" style="background:#c084fc"></i>API and queue</span>
+      <span><i class="dot" style="background:#34d399"></i>Workers</span>
+      <span><i class="dot" style="background:#60a5fa"></i>Distribution</span>
+    </div>
+    <div>Python · FastAPI · Celery · Redis · PostgreSQL · React · Docker</div>
+  </footer>
+</div>

@@ -1,0 +1,52 @@
+import os
+import rawpy
+import imageio
+import subprocess
+
+def process_professional_raw(raw_file_path: str, output_thumbnail_path: str):
+    """
+    Abre un archivo RAW nativo de cámara, extrae una copia ligera de alta 
+    calidad para la IA de Claude, sin alterar el archivo original.
+    """
+    try:
+        print(f"Procesando archivo RAW nativo: {raw_file_path}")
+        
+        # 1. Abrimos el archivo RAW con rawpy
+        with rawpy.imshow(raw_file_path) as raw:
+            # Procesamos el RAW con el algoritmo estándar AHD para previsualización limpia
+            rgb = raw.postprocess(use_camera_wb=True, half_size=True)
+            
+            # 2. Guardamos la miniatura optimizada en peso para enviar a Claude
+            imageio.imsave(output_thumbnail_path, rgb)
+            print(f"   -> Miniatura RAW generada con éxito para Claude: {output_thumbnail_path}")
+            return True
+            
+    except Exception as e:
+        print(f"Error crítico al procesar el archivo RAW con rawpy: {str(e)}")
+        return False
+
+def inject_metadata_raw_imagemagick(raw_file_path: str, title: str, description: str, keywords: list):
+    """
+    Usa la suite de ImageMagick mediante comandos de sistema para inyectar 
+    los metadatos IPTC/XMP en formatos RAW compatibles o archivos JPEG nativos.
+    """
+    keywords_str = ", ".join(keywords)
+    
+    # Comando de ImageMagick (Exif Profile / Mogrify)
+    # Exiftool es mejor para metadatos puros, pero ImageMagick asegura compatibilidad de perfiles de color
+    command = [
+        "mogrify",
+        "-set", "comment", description,
+        "-set", "property:comment", title,
+        "-set", "property:keywords", keywords_str,
+        raw_file_path
+    ]
+    
+    try:
+        # Ejecutamos el subproceso en el sistema operativo de forma segura
+        subprocess.run(command, check=True)
+        print(f"✅ ImageMagick inyectó perfiles y metadatos con éxito en: {raw_file_path}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error de ImageMagick al inyectar datos: {str(e)}")
+        return False

@@ -1,0 +1,88 @@
+import asyncio
+import aioftp
+import aiofiles
+import os
+from pydantic import BaseModel
+
+# Standard Stock Agency FTP Server Configurations
+AGENCY_FTP_SERVERS = {
+    "adobe": "adobestock.com",
+    "shutterstock": "shutterstock.com"
+}
+
+class FTPUploadPayload(BaseModel):
+    local_file_path: str
+    agency_name: str  # "adobe" or "shutterstock"
+    ftp_user: str
+    ftp_password_decrypted: str # Password decrypted by backend module
+
+async def upload_photo_to_agency(payload: FTPUploadPayload) -> bool:
+    """
+    Handles connection and asynchronous file upload to a stock agency.
+    Does not block server process loops thanks to the async/await architecture.
+    """
+    server = AGENCY_FTP_SERVERS.get(payload.agency_name.lower())
+    if not server:
+        print(f"Error: Agency {payload.agency_name} is not supported.")
+        return False
+
+    file_name = os.path.basename(payload.local_file_path)
+    
+    try:
+        print(f"Initiating asynchronous upload of {file_name} to {server}...")
+        
+        # Async connection to stock agency FTP (Port 21 by default)
+        async with aioftp.Client.context(server, user=payload.ftp_user, password=payload.ftp_password_decrypted) as client:
+            
+            # Open local file asynchronously to prevent disk blocking
+            async with aiofiles.open(payload.local_file_path, mode='rb') as f:
+                
+                # Open upload stream channel on FTP server
+                async with client.upload_stream(file_name) as stream:
+                    while True:
+                        # Read local file in 64KB chunks to optimize RAM consumption
+                        chunk = await f.read(65536)
+                        if not chunk:
+                            break
+                        await stream.write(chunk)
+                        
+        print(f"Upload successfully completed for {file_name} to {payload.agency_name}!")
+        return True
+
+    except aioftp.StatusCodeError as ftp_err:
+        # If server rejects upload or paths change, print log for diagnosis.
+        # Antigravity self-healing agent reads these logs to patch upload mechanisms.
+        print(f"CRITICAL FTP ERROR ({payload.agency_name}): Server status error: {ftp_err}")
+        return False
+    except Exception as e:
+        print(f"UNEXPECTED CONNECTION ERROR ({payload.agency_name}): {str(e)}")
+        return False
+
+# ==========================================
+# MULTI-TASK CONCURRENCY SIMULATION:
+# ==========================================
+async def main():
+    # Simulate 2 users uploading files concurrently
+    task_1 = FTPUploadPayload(
+        local_file_path="/tmp/landscape_photo_01.jpg",
+        agency_name="adobe",
+        ftp_user="adobe_contributor_id_123",
+        ftp_password_decrypted="decrypted_pass_1"
+    )
+    
+    task_2 = FTPUploadPayload(
+        local_file_path="/tmp/portrait_photo_02.jpg",
+        agency_name="shutterstock",
+        ftp_user="shutterstock_contributor_id_456",
+        ftp_password_decrypted="decrypted_pass_2"
+    )
+
+    # Concurrent Execution: Both uploads run in parallel in the background
+    # without slow-downs in the main application.
+    # In production, this integrates inside Redis/Celery queue workers.
+    print("Enqueueing concurrent uploads...")
+    # (Commented out to prevent errors since simulated local files do not exist)
+    # results = await asyncio.gather(upload_photo_to_agency(task_1), upload_photo_to_agency(task_2))
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -1,0 +1,71 @@
+/**
+ * Flujo del Frontend para subir archivos gigantes de stock sin colapsar el servidor.
+ */
+async function uploadPhotoWorkflow(file) {
+    console.log(`Iniciando flujo para el archivo: ${file.name} (${file.size} bytes)`);
+
+    try {
+        // PASO 1: Solicitar la URL Firmada a nuestro Backend.
+        // Le pasamos el nombre del archivo y el tipo para que la nube genere el permiso.
+        const backendResponse = await fetch('/api/vault/generate-presigned-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fileName: file.name,
+                fileType: file.type
+            })
+        });
+
+        if (!backendResponse.ok) throw new Error("No se pudo obtener la URL firmada del backend.");
+        
+        const { uploadUrl, fileStoragePath } = await backendResponse.json();
+        console.log("URL Firmada obtenida con éxito de la infraestructura.");
+
+        // PASO 2: Subir el archivo original pesado DIRECTAMENTE a la nube (S3/GCS)
+        // Usamos XMLHttpRequest en lugar de fetch para poder monitorear el progreso real en pantalla.
+        const xhr = new XMLHttpRequest();
+        
+        xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', file.type);
+
+        // Barra de progreso interactiva para el fotógrafo
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percentComplete = Math.round((event.loaded / event.total) * 100);
+                console.log(`Progreso de subida de ${file.name}: ${percentComplete}%`);
+                // Aquí actualizarías el estado en tu interfaz de React/Vue: setProgress(percentComplete)
+            }
+        };
+
+        xhr.onload = async () => {
+            if (xhr.status === 200) {
+                console.log(`¡Archivo original ${file.name} subido directamente a la nube con éxito!`);
+                
+                // PASO 3: Avisar al backend que la subida terminó para que Claude empiece a trabajar
+                await triggerBackendProcessing(fileStoragePath);
+            } else {
+                console.error("Error en la subida directa a los servidores de almacenamiento.");
+            }
+        };
+
+        xhr.onerror = () => console.error("Error de red durante la transferencia a la nube.");
+        
+        // Enviamos el archivo binario nativo (mantiene la resolución óptima al 100%)
+        xhr.send(file);
+
+    } catch (error) {
+        console.error("Fallo en el flujo de carga del Frontend:", error);
+    }
+}
+
+async function triggerBackendProcessing(fileStoragePath) {
+    // Llamada rápida al backend indicando que la foto ya está en la nube
+    // Tu backend tomará el control, llamará a Claude y ejecutará las subidas FTP.
+    await fetch('/api/process/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storagePath: fileStoragePath })
+    });
+}
+
+

@@ -1,0 +1,62 @@
+import os
+from base64 import b64encode, b64decode
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+class CredentialEncryptor:
+    def __init__(self):
+        # In production, this master key MUST be loaded from a secrets manager
+        # (such as AWS Secrets Manager or HashiCorp Vault) and NEVER hardcoded in the codebase.
+        # It must be a 32-byte base64 encoded key.
+        self.master_key_b64 = os.environ.get("MASTER_ENCRYPTION_KEY")
+        if not self.master_key_b64:
+            raise ValueError("CRITICAL: MASTER_ENCRYPTION_KEY not found in environment variables.")
+        self.key = b64decode(self.master_key_b64)
+        self.aesgcm = AESGCM(self.key)
+
+    def encrypt_data(self, plain_text: str) -> str:
+        """Encrypts a plaintext string (e.g., FTP password) and returns a secure, encoded string."""
+        # Generate a unique 12-byte initialization vector (nonce) for each encryption operation
+        nonce = os.urandom(12)
+        
+        # Encrypt the plaintext converted to bytes
+        encrypted_bytes = self.aesgcm.encrypt(nonce, plain_text.encode('utf-8'), None)
+        
+        # Store the nonce alongside the encrypted bytes to enable decryption later
+        final_payload = nonce + encrypted_bytes
+        
+        # Convert to Base64 to store it as text in the database (PostgreSQL)
+        return b64encode(final_payload).decode('utf-8')
+
+    def decrypt_data(self, encrypted_base64: str) -> str:
+        """Decrypts the database string and returns the original plaintext password."""
+        encrypted_payload = b64decode(encrypted_base64.encode('utf-8'))
+        
+        # Extract the first 12 bytes corresponding to the nonce
+        nonce = encrypted_payload[:12]
+        encrypted_bytes = encrypted_payload[12:]
+        
+        # Decrypt
+        decrypted_bytes = self.aesgcm.decrypt(nonce, encrypted_bytes, None)
+        return decrypted_bytes.decode('utf-8')
+
+# ==========================================
+# USAGE EXAMPLE WITHIN THE SYSTEM:
+# ==========================================
+if __name__ == "__main__":
+    # Test key generation (Only for simulation in local environments)
+    os.environ["MASTER_ENCRYPTION_KEY"] = b64encode(AESGCM.generate_key(bit_length=256)).decode('utf-8')
+    
+    # Initialize the security module
+    vault = CredentialEncryptor()
+    
+    # Sensitive photographer data when linking their Shutterstock account
+    ftp_password_original = "MySuperSecretShutterstockPassword2026!"
+    print(f"1. Original user text: {ftp_password_original}")
+    
+    # Encrypt before saving to Database
+    encrypted_password = vault.encrypt_data(ftp_password_original)
+    print(f"2. Saved to Database (Secure): {encrypted_password}")
+    
+    # Automatic decryption when the Antigravity Agent performs the FTP upload
+    recovered_password = vault.decrypt_data(encrypted_password)
+    print(f"3. Recovered text for upload: {recovered_password}")

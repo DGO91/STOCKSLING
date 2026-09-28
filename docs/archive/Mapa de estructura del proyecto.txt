@@ -1,0 +1,51 @@
+stocksling-core/                  # Carpeta raíz del proyecto StockSling
+│
+├── .agents/                     # Configuración y directrices para Google Antigravity
+│   └── skills/
+│       └── stocksling_rules.md   # Instrucciones sagradas de IA (Cero compresión, auto-reparación)
+│
+├── .github/
+│   └── workflows/
+│       └── deploy.yml           # CI/CD para despliegue y auto-reparación automatizada
+│
+├── assets/                      # Archivos estáticos de control
+│   └── canary_pixel.jpg         # Imagen/Frame de prueba para el monitoreo continuo "Canary"
+│
+├── backend/                     # Microservicio de API, procesamiento e Inteligencia Artificial
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py              # Punto de entrada asíncrono de FastAPI
+│   │   ├── config.py            # Variables de entorno y secretos cifrados (AWS/GCP)
+│   │   ├── database.py          # Conexión asíncrona a PostgreSQL con SQLAlchemy
+│   │   ├── models.py            # Esquema SQL extendido (Soporte para Códigos de Incidencia Únicos)
+│   │   │
+│   │   ├── crypto/
+│   │   │   └── vault.py         # Cifrado militar AES-256-GCM para credenciales de agencias
+│   │   │
+│   │   ├── services/
+│   │   │   ├── claude_vision.py # Cliente API de Claude 3.5 Sonnet (Indexador JSON estricto)
+│   │   │   ├── raw_processor.py # Procesamiento de fotos RAW (.CR3, .NEF, .ARW) con rawpy
+│   │   │   ├── video_processor.py # Extractor de fotogramas y validador de códecs (FFmpeg)
+│   │   │   ├── ftp_uploader.py  # Conector aioftp de alta velocidad y buffers optimizados
+│   │   │   └── ai_support_agent.py # NUEVO: Agente de soporte autónomo (Guía al usuario y activa parches)
+│   │   │
+│   │   └── workers/
+│   │       ├── cron_guardian.py # Script "Watcher" que dispara las alertas del Canary Test
+│   │       └── queue_worker.py  # Procesador de colas asíncronas (Redis/Celery)
+│   │
+│   ├── Dockerfile               # Multi-stage: Instala libraw, exiftool, imagemagick y FFMPEG
+│   └── requirements.txt         # Dependencias de Python (FastAPI, rawpy, anthropic, aioftp...)
+│
+├── frontend/                    # Interfaz de usuario (SaaS en la nube en modo oscuro)
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Dashboard.jsx    # Zona Drag & Drop (Soporta vídeos masivos mediante URLs firmadas)
+│   │   │   ├── MetadataEditor.jsx # Panel partido con Tailwind (Muestra errores amigables y chat IA)
+│   │   │   └── Referrals.jsx    # Módulo de gamificación y sistema de referidos por créditos
+│   │   └── App.jsx
+│   ├── index.html               # Estructura HTML de tu Landing Page de alta conversión
+│   ├── tailwind.config.js       # Paleta de colores corporativa (Slate 950, Cian eléctrico, Esmeralda)
+│   └── package.json
+│
+└── docker-compose.yml           # Orquestación de contenedores locales (API + PostgreSQL + Redis)

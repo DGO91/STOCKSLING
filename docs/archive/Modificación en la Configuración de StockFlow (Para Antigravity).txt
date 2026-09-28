@@ -1,0 +1,14 @@
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    # Pydantic busca automáticamente estas variables en el entorno de la máquina
+    # Si no existen al arrancar el contenedor, el sistema se frena por seguridad.
+    anthropic_api_key: str
+    master_encryption_key: str
+    database_url: str
+
+    class Config:
+        env_file = ".env" # Solo para desarrollo local, ignorado en producción por Git
+
+settings = Settings()
+
